@@ -1,0 +1,28 @@
+# Environments
+.env
+backend/.env
+frontend/.env
+**/__pycache__/
+*.pyc
+
+# Virtual environments
+venv/
+backend/venv/
+
+# Node dependencies
+node_modules/
+frontend/node_modules/
+
+# Local databases & state
+*.db
+backend/marine.db
+
+# User uploads and compiled builds
+backend/uploads/*
+!backend/uploads/.gitkeep
+dist/
+frontend/dist/
+
+# OS-specific files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,9 @@
+# Place your trained model files here:
+# - marine_model.keras   (exported from Google Colab)
+# - class_indices.json   (class index mapping from training)
+#
+# How to export class_indices.json from Colab:
+# import json
+# idx_to_class = {v: k for k, v in train_generator.class_indices.items()}
+# with open('class_indices.json', 'w') as f:
+#     json.dump(idx_to_class, f)
