@@ -31,14 +31,8 @@ export default function Predict() {
     maxFiles: 1,
   })
 
-  const handleCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
-      stream.getTracks().forEach((t) => t.stop())
-      toast('For best results, use the drag & drop uploader on desktop.', { icon: '📸' })
-    } catch {
-      toast.error('Camera not accessible. Please use file upload instead.')
-    }
+  const handleCameraClick = () => {
+    document.getElementById('camera-input').click()
   }
 
   const handlePredict = async () => {
@@ -129,9 +123,24 @@ export default function Predict() {
               <span className="text-gray-500 text-[10px] uppercase font-semibold">or</span>
               <div className="flex-1 h-px bg-white/[0.06]" />
             </div>
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              id="camera-input"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) {
+                  setFile(f)
+                  setPreview(URL.createObjectURL(f))
+                  setError(null)
+                }
+              }}
+            />
             <motion.button
               whileTap={{ scale: 0.98 }}
-              onClick={handleCamera}
+              onClick={handleCameraClick}
               className="w-full flex items-center justify-center gap-2 px-5 py-3 border border-white/10 rounded-lg text-gray-300 hover:bg-white/[0.03] transition-all text-xs font-semibold"
             >
               <Camera className="w-4 h-4 text-gray-500" />
