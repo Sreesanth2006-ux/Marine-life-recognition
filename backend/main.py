@@ -87,6 +87,6 @@ def root():
 def health():
     return {
         "status":       "healthy",
-        "model_loaded": model_service.model is not None,
+        "model_loaded": model_service.session is not None,
         "classes":      len(model_service.class_indices),
     }
