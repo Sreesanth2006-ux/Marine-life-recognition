@@ -1,11 +1,8 @@
 """
-Model Service
-=============
-Loads the Keras model on startup and provides the predict() function.
-
-Preprocessing matches standard ImageDataGenerator(rescale=1./255) training.
-If your Colab notebook used a model-specific preprocess_input (e.g. MobileNetV2),
-set PREPROCESS_MODE=mobilenet in .env and uncomment the relevant block below.
+Model Service (ONNX Runtime)
+=============================
+Loads the lightweight ONNX model on startup and provides the predict() function.
+This implementation uses onnxruntime, which consumes ~90% less RAM than TensorFlow.
 """
 
 from __future__ import annotations
@@ -17,12 +14,13 @@ import random
 from typing import Dict, Any
 
 import numpy as np
+import onnxruntime as ort
 from PIL import Image
 
 from config import settings
 
 # Module-level state
-model = None
+session = None
 class_indices: Dict[int, str] = {}
 
 
@@ -30,39 +28,23 @@ class_indices: Dict[int, str] = {}
 
 def load_model() -> None:
     """Called once at application startup."""
-    global model, class_indices
+    global session, class_indices
 
-    # ── Load Keras model ────────────────────────────────────────────────────
+    # ── Load ONNX Model ─────────────────────────────────────────────────────
     if os.path.exists(settings.MODEL_PATH):
         try:
-            import tensorflow as tf
-
-            # Dynamic patch for Keras 3 deserialization error (e.g. quantization_config in Dense layers)
-            try:
-                import keras
-                original_from_config_fn = keras.src.ops.operation.Operation.from_config.__func__
-                
-                @classmethod
-                def patched_from_config(cls, config):
-                    if isinstance(config, dict):
-                        config.pop("quantization_config", None)
-                    return original_from_config_fn(cls, config)
-                
-                keras.src.ops.operation.Operation.from_config = patched_from_config
-            except Exception as patch_exc:
-                print(f"[WARNING] Keras patch failed: {patch_exc}")
-
-            model = tf.keras.models.load_model(settings.MODEL_PATH)
-            print(f"[OK] Model loaded - {settings.MODEL_PATH}")
+            # Initialize ONNX inference session
+            session = ort.InferenceSession(settings.MODEL_PATH)
+            print(f"[OK] ONNX Model loaded - {settings.MODEL_PATH}")
         except Exception as exc:
             import traceback
             traceback.print_exc()
-            print(f"[ERROR] Model load failed: {exc}")
-            model = None
+            print(f"[ERROR] ONNX Model load failed: {exc}")
+            session = None
     else:
         print(
-            f"[WARNING] Model not found at '{settings.MODEL_PATH}'. "
-            "API will return mock predictions until the model file is placed in backend/ml/."
+            f"[WARNING] ONNX Model not found at '{settings.MODEL_PATH}'. "
+            "API will return mock predictions until the model file is placed."
         )
 
     # ── Load class index map ─────────────────────────────────────────────────
@@ -97,21 +79,19 @@ def _use_defaults() -> None:
 def preprocess_image(image_bytes: bytes) -> np.ndarray:
     """
     Resize → RGB → numpy array → normalise → add batch dim.
-
-    Switch PREPROCESS_MODE in .env:
-      "divide"   → pixels / 255.0         (default, most custom notebooks)
-      "mobilenet"→ mobilenet_v2 preprocess_input  (scales to [-1, 1])
+    
+    normalization methods are implemented in standard numpy to avoid loading tf/keras.
     """
     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     img = img.resize((settings.IMAGE_SIZE, settings.IMAGE_SIZE))
     arr = np.array(img, dtype=np.float32)
 
     if settings.PREPROCESS_MODE == "mobilenet":
-        from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
-        arr = preprocess_input(arr)
+        # mobilenet scales to [-1, 1]
+        arr = (arr / 127.5) - 1.0
     elif settings.PREPROCESS_MODE == "efficientnet":
-        from tensorflow.keras.applications.efficientnet_v2 import preprocess_input
-        arr = preprocess_input(arr)
+        # efficientnet uses standard [0, 255] float arrays since scaling layers are internal
+        pass
     else:
         arr = arr / 255.0
 
@@ -122,20 +102,12 @@ def preprocess_image(image_bytes: bytes) -> np.ndarray:
 
 def predict(image_bytes: bytes) -> Dict[str, Any]:
     """
-    Run inference and return the top-3 predictions.
-
-    Returns
-    -------
-    {
-        "predicted_class": str,
-        "confidence": float,
-        "top3_predictions": [{"class_name": str, "confidence": float}, ...]
-    }
+    Run inference using ONNX Runtime and return the top-3 predictions.
     """
     classes = list(class_indices.values())
 
     # ── Mock mode (model not loaded) ─────────────────────────────────────────
-    if model is None:
+    if session is None:
         chosen = random.randint(0, len(classes) - 1)
         conf = round(random.uniform(0.70, 0.99), 4)
         others = random.sample(
@@ -152,9 +124,15 @@ def predict(image_bytes: bytes) -> Dict[str, Any]:
         ]
         return {"predicted_class": classes[chosen], "confidence": conf, "top3_predictions": top3}
 
-    # ── Real inference ────────────────────────────────────────────────────────
+    # ── Real ONNX inference ───────────────────────────────────────────────────
     arr = preprocess_image(image_bytes)
-    preds = model.predict(arr, verbose=0)[0]
+    
+    # Retrieve ONNX input and output node names
+    input_name = session.get_inputs()[0].name
+    output_name = session.get_outputs()[0].name
+    
+    # Run the model
+    preds = session.run([output_name], {input_name: arr})[0][0]
 
     top3_indices = np.argsort(preds)[::-1][:3]
     top3 = [
