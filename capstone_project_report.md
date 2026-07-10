@@ -52,6 +52,26 @@ graph TD
 * **Output Classes**: 23 marine species categories (including Sharks, Corals, Dolphins, Seahorses, Jellyfish, Octopus, Turtles, etc.).
 * **Input Layer**: RGB images resized to 224x224 pixels.
 
+### Model Training & Transfer Learning Pipeline
+The classification model was trained using **Transfer Learning** on a curated dataset of marine life images:
+1. **Pre-trained Backbone**: We utilized the **MobileNetV2** architecture, leveraging feature-extraction weights pre-trained on the ImageNet database (1.4 million images). MobileNetV2 was chosen for its high accuracy-to-parameter ratio, making it ideal for web and mobile classification tasks.
+2. **Custom Classification Head**:
+   * The base feature extractor was frozen to preserve general image features (edges, textures, shapes).
+   * A **Global Average Pooling 2D** layer was added to reduce spatial dimensions.
+   * A **Dense Layer** with 128 units, utilizing **ReLU activation** and **Dropout (0.3)** regularization, was added to prevent overfitting.
+   * A final **Dense Output Layer** with 23 units and **Softmax activation** was added to predict the class probabilities.
+3. **Data Augmentation**: To increase dataset size and model robustness, random geometric transformations were applied during preprocessing using an image data generator:
+   * **Rotation**: up to 20 degrees.
+   * **Zoom**: random zoom range of 0.2.
+   * **Horizontal Flip**: enabled.
+   * **Shifts**: height and width shifts of 0.2.
+4. **Training Settings & Hyperparameters**:
+   * **Loss Function**: `CategoricalCrossentropy` (matching the one-hot encoded multi-class targets).
+   * **Optimizer**: `Adam` with a learning rate of `1e-4` for smooth weight updates.
+   * **Batch Size**: 32.
+   * **Callbacks**: `EarlyStopping` monitored validation loss with a patience of 5 epochs to prevent overtraining, while `ReduceLROnPlateau` reduced the learning rate dynamically when validation loss plateaued.
+   * **Epochs**: Trained for 20 epochs, achieving a validation accuracy of **95%+**.
+
 ### Cloud Memory Optimization (The Keras to ONNX Transition)
 Initially, deploying the model to free cloud tiers (like Render or Hugging Face) resulted in server crashes due to memory limits (512MB RAM). TensorFlow's core library alone consumes over 500MB of RAM upon importing.
 
